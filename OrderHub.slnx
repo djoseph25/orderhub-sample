@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OrderHub.Api/OrderHub.Api.csproj" />
+    <Project Path="src/OrderHub.Contracts/OrderHub.Contracts.csproj" />
+    <Project Path="src/OrderHub.Functions/OrderHub.Functions.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OrderHub.Api.Tests/OrderHub.Api.Tests.csproj" />
+    <Project Path="tests/OrderHub.Functions.Tests/OrderHub.Functions.Tests.csproj" />
+  </Folder>
+</Solution>

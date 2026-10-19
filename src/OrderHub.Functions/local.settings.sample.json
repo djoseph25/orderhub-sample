@@ -1,0 +1,18 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+
+    "OrderStorage": "UseDevelopmentStorage=true",
+    "ServiceBus": "Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;",
+
+    "OrderHub:OrdersQueueName": "orders",
+    "OrderHub:StaleSweepSchedule": "0 */15 * * * *",
+    "OrderHub:StaleAfter": "1.00:00:00",
+    "OrderHub:MaxDeliveryAttempts": "5",
+
+    "ShippingApi:BaseUrl": "https://localhost:7299/",
+    "ShippingApi:ApiKey": "local-dev-key"
+  }
+}

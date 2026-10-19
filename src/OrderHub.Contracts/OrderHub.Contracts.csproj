@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared DTOs and message contracts, the "SDK/Shared" project pattern. Publish as a NuGet package in real life. -->
+  <PropertyGroup>
+    <PackageId>OrderHub.Contracts</PackageId>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+</Project>

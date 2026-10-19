@@ -1,0 +1,12 @@
+<Project>
+  <!-- Shared settings for every project in the repo (Week 8: consistency across apps). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Catches .Result / missing awaits etc. at build time (Week 4). -->
+    <WarningsAsErrors>CS4014;CA2016</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

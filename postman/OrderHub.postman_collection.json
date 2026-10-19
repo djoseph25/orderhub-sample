@@ -1,0 +1,233 @@
+{
+  "info": {
+    "name": "OrderHub Sample",
+    "description": "Routes for the OrderHub study sample. Run with the Postman CLI:\n  postman collection run postman/OrderHub.postman_collection.json -e postman/local.postman_environment.json",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Functions",
+      "description": "Azure Functions HTTP routes. Function-level auth: x-functions-key header (not needed when running locally with func start).",
+      "auth": {
+        "type": "apikey",
+        "apikey": [
+          { "key": "key", "value": "x-functions-key", "type": "string" },
+          { "key": "value", "value": "{{functionKey}}", "type": "string" },
+          { "key": "in", "value": "header", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create order",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": ["pm.collectionVariables.set('correlationId', pm.variables.replaceIn('{{$guid}}'));"] }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('echoes correlation id', () => pm.expect(pm.response.headers.get('x-correlation-id')).to.eql(pm.collectionVariables.get('correlationId')));",
+                  "pm.collectionVariables.set('orderId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-correlation-id", "value": "{{correlationId}}" }
+            ],
+            "url": "{{functionsBaseUrl}}/api/v1/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"customer-001\",\n  \"lines\": [ { \"sku\": \"SKU-1\", \"quantity\": 2 } ],\n  \"shipToPostalCode\": \"12345\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create order - invalid (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 ValidationProblemDetails', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().errors).to.have.property('Lines');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{functionsBaseUrl}}/api/v1/orders",
+            "body": { "mode": "raw", "raw": "{ \"customerId\": \"customer-001\", \"lines\": [] }" }
+          }
+        },
+        {
+          "name": "Get order",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"] } }
+          ],
+          "request": { "method": "GET", "url": "{{functionsBaseUrl}}/api/v1/orders/{{orderId}}" }
+        },
+        {
+          "name": "Cancel order",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('200 or 409 (already shipped)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));"] }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{functionsBaseUrl}}/api/v1/orders/{{orderId}}/cancel" }
+        },
+        {
+          "name": "Ops - peek dead letters (master key)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "x-functions-key", "value": "{{masterKey}}" }],
+            "url": "{{functionsBaseUrl}}/api/ops/dlq?max=20"
+          }
+        },
+        {
+          "name": "Ops - replay dead letters (master key)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "x-functions-key", "value": "{{masterKey}}" }],
+            "url": "{{functionsBaseUrl}}/api/ops/dlq/replay?max=10"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog API",
+      "description": "ASP.NET Core Web API. Bearer JWT from Auth0 (client-credentials). Run 'Get Auth0 token' first.",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+      },
+      "item": [
+        {
+          "name": "Get Auth0 token (client credentials)",
+          "auth": { "type": "noauth" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('token issued', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('accessToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "https://{{auth0Domain}}/oauth/token",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grant_type\": \"client_credentials\",\n  \"client_id\": \"{{auth0ClientId}}\",\n  \"client_secret\": \"{{auth0ClientSecret}}\",\n  \"audience\": \"{{auth0Audience}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Health (anonymous)",
+          "auth": { "type": "noauth" },
+          "request": { "method": "GET", "url": "{{apiBaseUrl}}/health" }
+        },
+        {
+          "name": "Create product (write:products)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json();",
+                  "pm.collectionVariables.set('productId', p.id);",
+                  "pm.collectionVariables.set('productVersion', p.version);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiBaseUrl}}/api/v1/products",
+            "body": { "mode": "raw", "raw": "{ \"sku\": \"SKU-{{$randomInt}}\", \"name\": \"Widget\", \"price\": 9.99 }" }
+          }
+        },
+        {
+          "name": "List products v1",
+          "request": { "method": "GET", "url": "{{apiBaseUrl}}/api/v1/products?page=1&pageSize=20" }
+        },
+        {
+          "name": "List products v2 (new shape)",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('reports supported versions', () => pm.expect(pm.response.headers.get('api-supported-versions')).to.include('2.0'));"] }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{apiBaseUrl}}/api/v2/products" }
+        },
+        {
+          "name": "Get product",
+          "request": { "method": "GET", "url": "{{apiBaseUrl}}/api/v1/products/{{productId}}" }
+        },
+        {
+          "name": "Update product (send current version)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('staleVersion', pm.collectionVariables.get('productVersion'));",
+                  "pm.collectionVariables.set('productVersion', pm.response.json().version);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiBaseUrl}}/api/v1/products/{{productId}}",
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Widget Pro\", \"price\": 12.50, \"version\": \"{{productVersion}}\" }" }
+          }
+        },
+        {
+          "name": "Update product with stale version (409)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('409 Conflict', () => pm.response.to.have.status(409));"] } }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{apiBaseUrl}}/api/v1/products/{{productId}}",
+            "body": { "mode": "raw", "raw": "{ \"name\": \"Lost update\", \"price\": 1.00, \"version\": \"{{staleVersion}}\" }" }
+          }
+        },
+        {
+          "name": "Delete product",
+          "request": { "method": "DELETE", "url": "{{apiBaseUrl}}/api/v1/products/{{productId}}" }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "orderId", "value": "" },
+    { "key": "correlationId", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "productVersion", "value": "" },
+    { "key": "staleVersion", "value": "" }
+  ]
+}

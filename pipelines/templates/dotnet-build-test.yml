@@ -1,0 +1,42 @@
+# Step template: restore, build, test with coverage, and publish results.
+# Callers pass parameters; the steps stay consistent across every repo that uses the template.
+
+parameters:
+  - name: solution
+    type: string
+  - name: buildConfiguration
+    type: string
+    default: Release
+  - name: dotnetVersion
+    type: string
+    default: '10.0.x'
+
+steps:
+  - task: UseDotNet@2
+    displayName: Install .NET SDK ${{ parameters.dotnetVersion }}
+    inputs:
+      packageType: sdk
+      version: ${{ parameters.dotnetVersion }}
+
+  - script: dotnet restore ${{ parameters.solution }}
+    displayName: Restore
+
+  - script: dotnet build ${{ parameters.solution }} -c ${{ parameters.buildConfiguration }} --no-restore
+    displayName: Build
+
+  - script: >
+      dotnet test ${{ parameters.solution }} -c ${{ parameters.buildConfiguration }} --no-build
+      --logger trx --results-directory $(Agent.TempDirectory)/TestResults
+      --collect "XPlat Code Coverage"
+    displayName: Test
+
+  - task: PublishTestResults@2
+    condition: succeededOrFailed()
+    inputs:
+      testResultsFormat: VSTest
+      testResultsFiles: $(Agent.TempDirectory)/TestResults/**/*.trx
+
+  - task: PublishCodeCoverageResults@2
+    condition: succeededOrFailed()
+    inputs:
+      summaryFileLocation: $(Agent.TempDirectory)/TestResults/**/coverage.cobertura.xml

@@ -1,0 +1,98 @@
+# Week 8: Azure DevOps multi-stage pipeline.
+# Build/test runs on every PR. Deploy runs only from main, gated by an Azure DevOps "environment"
+# (add approvals/checks on the environment in the DevOps UI).
+
+trigger:
+  branches:
+    include: [main]
+  paths:
+    exclude: ['*.md', 'postman/*']
+
+pr:
+  branches:
+    include: [main]
+
+parameters:
+  - name: azureServiceConnection
+    type: string
+    default: 'sc-orderhub-dev'   # ARM service connection (use workload identity federation, not secrets)
+  - name: resourceGroup
+    type: string
+    default: 'rg-orderhub-dev'
+
+variables:
+  buildConfiguration: Release
+
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildAndTest
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          # Reusable step template, the same idea as a shared "templates" repo, just local here.
+          - template: templates/dotnet-build-test.yml
+            parameters:
+              solution: OrderHub.slnx
+              buildConfiguration: $(buildConfiguration)
+
+          - script: dotnet publish src/OrderHub.Functions -c $(buildConfiguration) --no-build -o $(Build.ArtifactStagingDirectory)/functions
+            displayName: Publish Functions
+
+          - task: ArchiveFiles@2
+            displayName: Zip Functions package
+            inputs:
+              rootFolderOrFile: $(Build.ArtifactStagingDirectory)/functions
+              includeRootFolder: false
+              archiveFile: $(Build.ArtifactStagingDirectory)/functions.zip
+
+          # Week 11: a migration bundle is a self-contained exe that applies EF migrations. Run it in the
+          # deploy stage. Don't call Database.Migrate() from app startup in shared environments.
+          - script: |
+              dotnet tool restore
+              dotnet ef migrations bundle -p src/OrderHub.Api -o $(Build.ArtifactStagingDirectory)/efbundle --self-contained -r linux-x64 --configuration $(buildConfiguration)
+            displayName: Build EF migration bundle
+
+          - script: az bicep build --file infra/main.bicep --stdout > /dev/null
+            displayName: Validate Bicep
+
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: drop
+
+  - stage: DeployDev
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: Deploy
+        environment: orderhub-dev
+        pool:
+          vmImage: ubuntu-latest
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self   # deployment jobs don't check out source by default; we need infra/
+
+                - task: AzureCLI@2
+                  displayName: Deploy infrastructure (Bicep)
+                  name: infra
+                  inputs:
+                    azureSubscription: ${{ parameters.azureServiceConnection }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      name=$(az deployment group create \
+                        -g ${{ parameters.resourceGroup }} \
+                        -f infra/main.bicep \
+                        -p shippingApiBaseUrl="$(ShippingApiBaseUrl)" shippingApiKey="$(ShippingApiKey)" \
+                        --query properties.outputs.functionAppName.value -o tsv)
+                      echo "##vso[task.setvariable variable=functionAppName]$name"
+
+                - task: AzureFunctionApp@2
+                  displayName: Deploy Functions package
+                  inputs:
+                    azureSubscription: ${{ parameters.azureServiceConnection }}
+                    appType: functionAppLinux
+                    isFlexConsumption: true   # Flex has no deployment slots; use Premium/Dedicated if you need slot swaps
+                    appName: $(functionAppName)
+                    package: $(Pipeline.Workspace)/drop/functions.zip

@@ -1,0 +1,5 @@
+[*.cs]
+# Snake_case test names read as sentences in test output, which is a common convention for tests.
+dotnet_diagnostic.CA1707.severity = none
+# MSTest disposes per-test resources in [TestCleanup], so the class itself doesn't need IDisposable.
+dotnet_diagnostic.CA1001.severity = none
